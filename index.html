@@ -189,8 +189,9 @@
                 
         // ***************************************************************
         // *** Apps Script 服務的網頁應用程式 URL ***
+        // *** 請確認這個 URL 是否是您最新部署時獲得的正確 URL ***
         // ***************************************************************
-        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx1u2cSaGPbXvK5urEdHW20QtHNLxYfz3weEck4C1NWCrD1gZrCBcW1cv9pctTETunWRA/exec'; 
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx9SQ_mpEWZzvoPGUmpdhJbfU4FnUTmujaJLzJUtygenOCfPqywVrnJUPyI1g8cPaq3sQ/exec'; 
                 
         const statusMessage = document.getElementById('status-message');
 
@@ -252,8 +253,6 @@
             // 使用 extractTime 處理所有時間欄位
             const firstFeedTime = extractTime(log['第一次 飲食']);
             const secondFeedTime = extractTime(log['第二次 飲食']);
-            const sleepTime = extractTime(log['第一次 睡眠']);
-            const diaperTime = extractTime(log['換尿布時間']);
 
             if (firstFeedTime && log['第一次 飲食']) { // 檢查原始欄位是否有值
                 summary.push({
@@ -261,7 +260,6 @@
                     type: "第一次餵食", 
                     amount: log['奶量(cc)'] || 0, 
                     unit: "cc",
-                    rawTime: log['第一次 飲食']
                 });
             }
             if (secondFeedTime && log['第二次 飲食']) {
@@ -270,7 +268,6 @@
                     type: "第二次餵食", 
                     amount: log['第二次 飲食奶量(cc)'] || 0, 
                     unit: "cc",
-                    rawTime: log['第二次 飲食']
                 });
             }
             // ... 您可以在此處擴充其他多次餵食的記錄
@@ -284,7 +281,10 @@
             statusMessage.textContent = '正在從雲端獲取最新日誌資料...';
             statusMessage.style.color = '#d9534f';
 
-            fetch(APPS_SCRIPT_URL)
+            // 【關鍵修正】加入隨機時間戳記參數，強制清除 GitHub CDN 和瀏覽器的快取
+            const cacheBusterUrl = `${APPS_SCRIPT_URL}?v=${new Date().getTime()}`;
+
+            fetch(cacheBusterUrl)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP 錯誤! 狀態碼: ${response.status}`);
