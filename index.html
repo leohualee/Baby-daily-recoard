@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>👶 寶寶日誌網頁檢視器 (最終美化版)</title>
+    <title>👶 寶寶日誌網頁檢視器 (最終完美運行版)</title>
     <style>
         /* CSS 樣式：美化與結構化 */
         body {
@@ -143,6 +143,7 @@
         .sleeping-theme { border-left-color: #17a2b8; }
         .diaper-theme { border-left-color: #28a745; }
         .health-theme { border-left-color: #dc3545; }
+        .contact-theme { border-left-color: #6c757d; } /* 新增聯絡事項主題 */
 
         .detail-row {
             display: flex;
@@ -153,6 +154,10 @@
             margin-top: 5px;
         }
 
+        .detail-item {
+            min-width: 45%; 
+        }
+
         .detail-item strong {
             font-weight: bold;
             color: #333;
@@ -161,7 +166,7 @@
 </head>
 <body>
 
-    <h1>🚀 寶寶日誌網頁檢視器 (點擊即看最新)</h1>
+    <h1>🚀 寶寶日誌網頁檢視器 (最終完美運行版)</h1>
 
     <div class="controls">
         <div class="control-group">
@@ -189,89 +194,66 @@
                 
         // ***************************************************************
         // *** Apps Script 服務的網頁應用程式 URL ***
-        // *** 請替換為您最新部署時獲得的正確 URL ***
         // ***************************************************************
-        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx1u2cSaGPbXvK5urEdHW20QtHNLxYfz3weEck4C1NWCrD1gZrCBcW1cv9pctTETunWRA/exec'; 
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzYp3JTfMmPyiV6r6jOk4bbR-RoqMNo_PmnNcFSFOaHIA-KmNjcDEZ-24ZW6KmRBDn34g/exec'; 
                 
         const statusMessage = document.getElementById('status-message');
 
-
         /**
-         * 處理 Apps Script 回傳的長格式日期字串，並提取日期部分進行比較。
+         * 修正日期選擇時的時區偏移。
+         * 建立一個不受瀏覽器時區自動偏移影響的日期物件，確保它代表該日期的本地午夜。
          */
         function parseDateForComparison(dateString) {
             if (!dateString) return null;
             
-            const d = new Date(dateString); 
+            const parts = dateString.split('-');
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1; // 月份從 0 開始 (0-11)
+            const day = parseInt(parts[2], 10);
             
-            if (isNaN(d.getTime())) return null;
-            
-            const year = d.getFullYear();
-            const month = d.getMonth();
-            const date = d.getDate();
-            
-            // 建立一個代表該日期午夜 (00:00:00) 的日期物件，用於篩選比較
-            const comparisonDate = new Date(year, month, date, 0, 0, 0, 0); 
-            
-            return comparisonDate;
+            // 建立一個 Local Time (本地時區) 的日期物件，確保是該天的 00:00:00
+            const localDate = new Date(year, month, day, 0, 0, 0, 0); 
+
+            if (isNaN(localDate.getTime())) return null;
+            return localDate;
         }
 
         /**
-         * 從 Apps Script 的長格式字串中，提取時間部分，例如 "08:38:40"
+         * 最終修正版：根除 38 分鐘時區偏移問題。
+         * 對純時間欄位（例如 08:00）則直接從字串中提取 HH:MM。
          */
         function extractTime(dateString) {
             if (!dateString) return '';
-            
-            const d = new Date(dateString);
-            
-            if (isNaN(d.getTime())) {
-                return ''; 
+            const str = String(dateString).trim();
+
+            // Case 1: Apps Script Date Object (Time-only columns) - 修正 38 分鐘錯誤
+            if (str.includes("GMT") || str.includes("CST") || str.includes("1899")) {
+                // 直接從字串中提取 HH:MM
+                const timeMatch = str.match(/(\d{2}):(\d{2}):(\d{2})/);
+                if (timeMatch && timeMatch.length >= 3) {
+                    return `${timeMatch[1]}:${timeMatch[2]}`; 
+                }
             }
             
-            // 確保以 24 小時制顯示
-            return d.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        }
+            // Case 2: Apps Script Timestamp (Column A) - 完整的日期時間
+            if (str.length > 15 && (str.includes('-') || str.includes(' ') && str.includes('20'))) {
+                const d = new Date(str);
+                if (!isNaN(d.getTime())) {
+                    // 對於時間戳記，依賴瀏覽器的時區轉換
+                    return d.toLocaleTimeString('zh-TW', { 
+                        hour: '2-digit', 
+                        minute: '2-digit', 
+                        hour12: false 
+                    });
+                }
+            }
 
-
-        /**
-         * 根據資料內容判斷主要事件類型
-         */
-        function getEventType(log) {
-            if (log['第一次 飲食'] || log['第二次 飲食'] || log['第三次 飲食']) return '飲食';
-            if (log['第一次 睡眠']) return '睡眠';
-            if (log['第一次 排便'] || log['第二次 排便'] || log['第三次 排便']) return '排便';
-            if (log['洗澡時間']) return '洗澡';
-            return '其他活動';
-        }
-
-        /**
-         * 將多個相關欄位彙整成單一的內容摘要 (此函式現在用於呈現詳細內容)
-         */
-        function getLogSummary(log) {
-            let summary = [];
+            // Case 3: Simple HH:MM (Fallback for文字輸入)
+            if (str.match(/^\d{1,2}:\d{2}/)) {
+                return str.substring(0, 5);
+            }
             
-            // 使用 extractTime 處理所有時間欄位
-            const firstFeedTime = extractTime(log['第一次 飲食']);
-            const secondFeedTime = extractTime(log['第二次 飲食']);
-
-            if (firstFeedTime && log['第一次 飲食']) { // 檢查原始欄位是否有值
-                summary.push({
-                    time: firstFeedTime, 
-                    type: "第一次餵食", 
-                    amount: log['奶量(cc)'] || 0, 
-                    unit: "cc",
-                });
-            }
-            if (secondFeedTime && log['第二次 飲食']) {
-                summary.push({
-                    time: secondFeedTime, 
-                    type: "第二次餵食", 
-                    amount: log['第二次 飲食奶量(cc)'] || 0, 
-                    unit: "cc",
-                });
-            }
-
-            return summary;
+            return ''; 
         }
 
 
@@ -280,7 +262,6 @@
             statusMessage.textContent = '正在從雲端獲取最新日誌資料...';
             statusMessage.style.color = '#d9534f';
 
-            // 【關鍵修正】加入隨機時間戳記參數，強制清除 GitHub CDN 和瀏覽器的快取
             const cacheBusterUrl = `${APPS_SCRIPT_URL}?v=${new Date().getTime()}`;
 
             fetch(cacheBusterUrl)
@@ -298,25 +279,33 @@
                     
                     babyLogs = data.map(log => {
                         const fullTimestamp = String(log['時間戳記']);
-                        
-                        const parsedDate = parseDateForComparison(fullTimestamp);
-                        const datePart = parsedDate ? parsedDate.toISOString().split('T')[0] : '';
+                        // 這裡使用內建的 Date 轉換來獲取顯示的日期部分
+                        const parsedDate = new Date(fullTimestamp); 
+                        const datePart = isNaN(parsedDate.getTime()) ? '' : parsedDate.toLocaleDateString('zh-TW', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                        }).replace(/\//g, '-').replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$1-$2-$3');
                         
                         return {
-                            ...log, // 保留所有原始欄位
+                            ...log, 
                             '完整時間戳記': fullTimestamp, 
                             '日期': datePart, 
                             '時間': extractTime(fullTimestamp), 
-                            '事件類型': getEventType(log),
                         };
                     }).filter(log => log['日期'] && String(log['日期']).trim() !== ''); 
                     
                     statusMessage.textContent = `資料載入成功！共 ${babyLogs.length} 筆最新記錄。`;
                     statusMessage.style.color = '#4CAF50'; 
 
-                    // 自動設定日期範圍並篩選今天的資料
+                    // 自動設定為今天
                     const today = new Date();
-                    const formatDate = (date) => date.toISOString().split('T')[0];
+                    const formatDate = (date) => {
+                         const y = date.getFullYear();
+                         const m = String(date.getMonth() + 1).padStart(2, '0');
+                         const d = String(date.getDate()).padStart(2, '0');
+                         return `${y}-${m}-${d}`;
+                    };
                     document.getElementById('start-date').value = formatDate(today);
                     document.getElementById('end-date').value = formatDate(today);
 
@@ -347,23 +336,26 @@
                 return; 
             }
 
-            // 篩選範圍設定
+            // 使用修正後的函式，確保它們是本地時區的 00:00:00，避免時區偏移
             const startDate = parseDateForComparison(startDateStr);
             const endDate = parseDateForComparison(endDateStr);
             
+            // 結束日期的比較範圍是到 "結束日期的下一天的午夜"
             if (endDate) {
-                endDate.setDate(endDate.getDate() + 1); // 包含選定結束日期的整天
+                endDate.setDate(endDate.getDate() + 1); 
             }
 
 
             const filteredLogs = babyLogs.filter(log => {
-                const logDate = parseDateForComparison(log['完整時間戳記']);
+                // 將資料庫的時間戳記轉換為毫秒數，以便與篩選的本地時間範圍比較
+                const logTime = new Date(log['完整時間戳記']).getTime(); 
                 
-                if (!logDate || !startDate || !endDate) {
+                if (isNaN(logTime) || !startDate || !endDate) {
                     return false; 
                 }
 
-                return logDate.getTime() >= startDate.getTime() && logDate.getTime() < endDate.getTime();
+                // 篩選： logTime 必須 >= 起始日期的本地午夜 AND < 結束日期的下一天的本地午夜
+                return logTime >= startDate.getTime() && logTime < endDate.getTime();
             }).sort((a, b) => {
                 const timeA = new Date(a['完整時間戳記']).getTime();
                 const timeB = new Date(b['完整時間戳記']).getTime();
@@ -375,12 +367,11 @@
                 return;
             }
             
-            // 3. 渲染結果到網頁 - **美化排版核心**
+            // 3. 渲染結果到網頁
             filteredLogs.forEach(log => {
                 const card = document.createElement('div');
                 card.className = 'log-card';
 
-                // --- 1. 標頭 ---
                 const cardHeader = `
                     <div class="card-header">
                         <span>${log['日期']} ${extractTime(log['完整時間戳記'])}</span>
@@ -388,70 +379,150 @@
                     </div>
                 `;
 
-                // --- 2. 內容區塊 ---
                 let contentHTML = '<div class="log-content">';
+                let sectionContent = '';
+                
 
                 // A. 飲食/餵食 (黃色主題)
-                const feedingSummary = getLogSummary(log);
-                if (feedingSummary.length > 0 || log['其他飲食']) {
+                sectionContent = '';
+                if (log['早餐時間'] || log['午餐時間'] || log['點心時間'] || log['喝奶時間']) {
+                    let foodDetails = [];
+
+                    const breakfastMeal = log['早餐餐點'] || log['餐點(早餐)'] || log['早餐 餐點'] || (log['早餐時間'] ? log['餐點'] : undefined);
+                    if (log['早餐時間']) foodDetails.push({ time: extractTime(log['早餐時間']), label: "早餐", food: breakfastMeal });
+                    
+                    const lunchMeal = log['午餐餐點'] || log['餐點(午餐)'] || log['午餐 餐點'] || (log['午餐時間'] ? log['餐點 1'] : undefined);
+                    if (log['午餐時間']) foodDetails.push({ time: extractTime(log['午餐時間']), label: "午餐", food: lunchMeal });
+                    
+                    const snackMeal = log['點心餐點'] || log['餐點(點心)'] || log['點心 餐點'] || (log['點心時間'] ? log['餐點 2'] : undefined);
+                    if (log['點心時間']) foodDetails.push({ time: extractTime(log['點心時間']), label: "點心", food: snackMeal });
+
+                    if (log['喝奶時間']) {
+                        foodDetails.push({ time: extractTime(log['喝奶時間']), label: "喝奶", amount: log['奶量(cc)'], isMilk: true });
+                    }
+                    
+                    if (foodDetails.length > 0) {
+                        sectionContent = foodDetails.map(f => {
+                            let foodDisplay = f.food && String(f.food).trim() !== '' ? ` (${f.food})` : '';
+                            
+                            return `
+                                <div class="detail-row">
+                                    <div class="detail-item">
+                                        <strong>${f.label}:</strong> ${f.time}${foodDisplay}
+                                    </div>
+                                    ${f.isMilk ? 
+                                        `<div class="detail-item"><strong>奶量:</strong> ${f.amount || 'N/A'} cc</div>` : 
+                                        ''
+                                    }
+                                </div>
+                            `;
+                        }).join('');
+
+                        contentHTML += `<div class="log-section feeding-theme">
+                            <h4><span>🍼</span> 飲食記錄</h4>${sectionContent}
+                        </div>`;
+                    }
+                // 結構 1: 多次飲食 (舊結構) - 備用
+                } else if (log['第一次 飲食'] || log['第二次 飲食'] || log['第三次 飲食']) {
+                    let feedingDetails = [];
+                    if (log['第一次 飲食']) feedingDetails.push({ time: extractTime(log['第一次 飲食']), label: "第一次餵食", amount: log['奶量(cc)'], other: log['其他飲食'] });
+                    if (log['第二次 飲食']) feedingDetails.push({ time: extractTime(log['第二次 飲食']), label: "第二次餵食", amount: log['第二次 飲食奶量(cc)'], other: log['第二次 飲食其他飲食'] });
+                    if (log['第三次 飲食']) feedingDetails.push({ time: extractTime(log['第三次 飲食']), label: "第三次餵食", amount: log['第三次 飲食奶量(cc)'], other: log['第三次 飲食其他飲食'] });
+
+                    sectionContent = feedingDetails.map(f => `
+                        <div class="detail-row">
+                            <div class="detail-item"><strong>${f.label}:</strong> ${f.time}</div>
+                            <div class="detail-item"><strong>奶量:</strong> ${f.amount || 'N/A'} cc</div>
+                            ${f.other && String(f.other).trim() !== '' ? `<div class="detail-item"><strong>其他飲食:</strong> ${f.other}</div>` : ''}
+                        </div>
+                    `).join('');
+                    
                     contentHTML += `<div class="log-section feeding-theme">
-                        <h4><span>🍼</span> 飲食記錄</h4>
-                        ${feedingSummary.map(f => `<div class="detail-row">
-                            <div class="detail-item"><strong>時間:</strong> ${f.time}</div>
-                            <div class="detail-item"><strong>${f.type}:</strong> ${f.amount} ${f.unit}</div>
-                        </div>`).join('')}
-                        ${log['其他飲食'] ? `<div class="detail-row"><div class="detail-item"><strong>其他:</strong> ${log['其他飲食']}</div></div>` : ''}
+                        <h4><span>🍼</span> 飲食記錄 (多餐次結構)</h4>${sectionContent}
+                    </div>`;
+                }
+
+                // B. 睡眠 (藍色主題)
+                sectionContent = '';
+                if (log['第一次 睡眠'] || log['第二次 睡眠'] || log['第三次 睡眠']) {
+                    if (log['第一次 睡眠']) sectionContent += `<div class="detail-item"><strong>第一次:</strong> ${extractTime(log['第一次 睡眠'])} (${log['睡眠狀況'] || 'N/A'})</div>`;
+                    if (log['第二次 睡眠']) sectionContent += `<div class="detail-item"><strong>第二次:</strong> ${extractTime(log['第二次 睡眠'])} (${log['第二次 睡眠狀況'] || 'N/A'})</div>`;
+                    if (log['第三次 睡眠']) sectionContent += `<div class="detail-item"><strong>第三次:</strong> ${extractTime(log['第三次 睡眠']) || 'N/A'}</div>`;
+                    
+                    contentHTML += `<div class="log-section sleeping-theme">
+                        <h4><span>😴</span> 睡眠狀況</h4><div class="detail-row">${sectionContent}</div>
                     </div>`;
                 }
                 
-                // B. 睡眠 (藍色主題)
-                const sleepTime = extractTime(log['第一次 睡眠']);
-                if (sleepTime || log['第二次 睡眠'] || log['第三次 睡眠']) {
-                    contentHTML += `<div class="log-section sleeping-theme">
-                        <h4><span>😴</span> 睡眠狀況</h4>
-                        ${sleepTime ? `<div class="detail-row">
-                            <div class="detail-item"><strong>第一次:</strong> ${sleepTime}</div>
-                            <div class="detail-item"><strong>狀況:</strong> ${log['睡眠狀況'] || '無記錄'}</div>
-                        </div>` : ''}
-                        ${log['第二次 睡眠'] ? `<div class="detail-row"><div class="detail-item"><strong>第二次:</strong> ${extractTime(log['第二次 睡眠'])}</div></div>` : ''}
-                        ${log['第三次 睡眠'] ? `<div class="detail-row"><div class="detail-item"><strong>第三次:</strong> ${extractTime(log['第三次 睡眠'])}</div></div>` : ''}
-                    </div>`;
-                }
-
                 // C. 排便/清潔 (綠色主題)
-                const diaperTime = extractTime(log['換尿布時間']);
-                if (diaperTime || log['第一次 排便'] || log['洗澡時間']) {
+                sectionContent = '';
+                if (log['第一次 排便'] || log['洗澡時間'] || log['換尿布時間']) {
+                    if (log['第一次 排便']) sectionContent += `<div class="detail-item"><strong>排便 1:</strong> ${extractTime(log['第一次 排便'])} (${log['排便狀態'] || 'N/A'})</div>`;
+                    if (log['第二次 排便']) sectionContent += `<div class="detail-item"><strong>排便 2:</strong> ${extractTime(log['第二次 排便'])} (${log['排便狀態'] || 'N/A'})</div>`;
+                    if (log['第三次 排便']) sectionContent += `<div class="detail-item"><strong>排便 3:</strong> ${extractTime(log['第三次 排便']) || 'N/A'} (${log['第三次 排便狀態'] || 'N/A'})</div>`;
+                    
+                    if (log['排便過多次數(次)']) sectionContent += `<div class="detail-item"><strong>過多次數:</strong> ${log['排便過多次數(次)']} 次</div>`;
+                    if (log['換尿布時間']) sectionContent += `<div class="detail-item"><strong>換尿布:</strong> ${extractTime(log['換尿布時間']) || 'N/A'}</div>`;
+                    if (log['洗澡時間']) sectionContent += `<div class="detail-item"><strong>洗澡:</strong> ${extractTime(log['洗澡時間']) || 'N/A'}</div>`;
+                    if (log['口腔清潔或刷牙時間']) sectionContent += `<div class="detail-item"><strong>口腔清潔:</strong> ${extractTime(log['口腔清潔或刷牙時間']) || 'N/A'}</div>`;
+                    
                     contentHTML += `<div class="log-section diaper-theme">
-                        <h4><span>🚽</span> 清潔與排泄</h4>
-                        ${log['第一次 排便'] ? `<div class="detail-row">
-                            <div class="detail-item"><strong>排便 1:</strong> ${extractTime(log['第一次 排便'])} (${log['排便狀態'] || 'N/A'})</div>
-                        </div>` : ''}
-                        ${diaperTime ? `<div class="detail-row">
-                            <div class="detail-item"><strong>換尿布:</strong> ${diaperTime}</div>
-                        </div>` : ''}
-                        ${log['洗澡時間'] ? `<div class="detail-row">
-                            <div class="detail-item"><strong>洗澡:</strong> ${extractTime(log['洗澡時間'])}</div>
-                        </div>` : ''}
-                        ${log['口腔清潔或刷牙時間'] ? `<div class="detail-row">
-                            <div class="detail-item"><strong>口腔清潔:</strong> ${extractTime(log['口腔清潔或刷牙時間'])}</div>
-                        </div>` : ''}
+                        <h4><span>🚽</span> 清潔與排泄</h4><div class="detail-row">${sectionContent}</div>
                     </div>`;
                 }
 
-                // D. 體溫/情緒/備註 (紅色主題 - 體溫)
-                const tempMorning = log['體溫 上午'];
-                if (tempMorning || log['寶寶情緒'] || log['對於今日寶寶狀況分享與回饋']) {
+
+                // D. 體溫/情緒/意外 (紅色主題)
+                sectionContent = '';
+                // 檢查體溫欄位
+                if (log['體溫'] && String(log['體溫']).trim() !== '' && log['體溫'] !== 'N/A') {
+                    sectionContent += `<div class="detail-item"><strong>體溫:</strong> ${log['體溫']}°C</div>`;
+                } else if (log['體溫 上午'] || log['體溫 中午'] || log['體溫 下午'] || log['體溫 晚上']) {
+                    sectionContent += `<div class="detail-item"><strong>上午:</strong> ${log['體溫 上午'] || 'N/A'}°C</div>`;
+                    sectionContent += `<div class="detail-item"><strong>中午:</strong> ${log['體溫 中午'] || 'N/A'}°C</div>`;
+                    sectionContent += `<div class="detail-item"><strong>下午:</strong> ${log['體溫 下午'] || 'N/A'}°C</div>`;
+                    sectionContent += `<div class="detail-item"><strong>晚上:</strong> ${log['體溫 晚上'] || 'N/A'}°C</div>`;
+                }
+                
+                if (log['寶寶情緒'] || log['身體狀況'] || log['意外狀況'] || sectionContent !== '') {
+                    
                     contentHTML += `<div class="log-section health-theme">
                         <h4><span>🌡️</span> 體溫與狀態</h4>
+                        
+                        <div class="detail-row">${sectionContent}</div>
+                        
                         <div class="detail-row">
-                            ${tempMorning ? `<div class="detail-item"><strong>體溫:</strong> 上午 ${tempMorning}°C / 中午 ${log['體溫 中午'] || 'N/A'}°C</div>` : ''}
+                            <div class="detail-item"><strong>寶寶情緒:</strong> ${log['寶寶情緒'] || 'N/A'}</div>
                         </div>
-                         <div class="detail-row">
-                            <div class="detail-item"><strong>情緒:</strong> ${log['寶寶情緒'] || 'N/A'} (${log['寶寶活動狀況'] || 'N/A'})</div>
-                        </div>
+                        
                         <div class="detail-row">
-                            <div class="detail-item"><strong>回饋:</strong> ${log['對於今日寶寶狀況分享與回饋'] || '無'}</div>
+                            ${log['身體狀況'] && String(log['身體狀況']).trim() !== '' ? `<div class="detail-item"><strong>身體狀況:</strong> ${log['身體狀況']}</div>` : ''}
+                            ${log['意外狀況'] && String(log['意外狀況']).trim() !== '' ? `<div class="detail-item"><strong>意外狀況:</strong> ${log['意外狀況']}</div>` : ''}
                         </div>
+                    </div>`;
+                }
+
+                // E. 聯絡事項與回饋 (灰色主題) - 已加入「寶寶活動狀況」
+                if (log['褓姆聯絡事項'] || log['對於今日寶寶狀況分享與回饋'] || log['寶寶活動狀況']) {
+                    sectionContent = '';
+                    
+                    // 1. 活動狀況 (已移到這裡)
+                    if (log['寶寶活動狀況'] && String(log['寶寶活動狀況']).trim() !== '') {
+                        sectionContent += `<div class="detail-row"><div class="detail-item"><strong>寶寶活動狀況:</strong> ${log['寶寶活動狀況']}</div></div>`;
+                    }
+                    
+                    // 2. 褓姆聯絡事項
+                    if (log['褓姆聯絡事項'] && String(log['褓姆聯絡事項']).trim() !== '') {
+                        sectionContent += `<div class="detail-row"><div class="detail-item"><strong>褓姆聯絡事項:</strong> ${log['褓姆聯絡事項']}</div></div>`;
+                    }
+                    
+                    // 3. 家長回饋
+                    if (log['對於今日寶寶狀況分享與回饋'] && String(log['對於今日寶寶狀況分享與回饋']).trim() !== '') {
+                        sectionContent += `<div class="detail-row"><div class="detail-item"><strong>家長回饋:</strong> ${log['對於今日寶寶狀況分享與回饋']}</div></div>`;
+                    }
+                    
+                    contentHTML += `<div class="log-section contact-theme">
+                        <h4><span>📝</span> 聯絡與回饋</h4>${sectionContent}
                     </div>`;
                 }
                 
@@ -463,9 +534,7 @@
             });
         }
 
-        // 確保網頁載入時執行 loadBabyLogs
         document.addEventListener('DOMContentLoaded', loadBabyLogs);
     </script>
 </body>
 </html>
-
